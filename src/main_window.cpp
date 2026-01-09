@@ -25,6 +25,7 @@ void MainWindow::createToolBars()
 {
     auto menuBar = new QMenuBar(nullptr);
     auto menu_file = menuBar->addMenu(tr("Файл"));
+    auto menu_detail = menuBar->addMenu(tr("Деталь"));
     auto menu_settings = menuBar->addMenu(tr("Настроить"));
     auto menu_help = menuBar->addMenu(tr("Справка"));
 
@@ -34,13 +35,22 @@ void MainWindow::createToolBars()
         [this](){ this->close(); },
         Qt::CTRL + Qt::Key_Q
     );
+    
+    menu_detail->addAction(
+        QIcon::fromTheme("settings"),
+        "Исполнение",
+        this,
+        &MainWindow::buildParamSelector
+    );
 
-    menu_settings->addAction(
+    auto showTreeAction = menu_settings->addAction(
         "Показать дерево", 
         [this](bool checked){
             tree->setHidden(!checked);
         }
-    )->setCheckable(true);
+    );
+    showTreeAction->setCheckable(true);
+    showTreeAction->setChecked(true);
     
     menu_help->addAction(
         QIcon::fromTheme("help-about"), 
@@ -63,10 +73,23 @@ void MainWindow::setupUi()
     auto root = tree->addItem("Сборка");
     root->setExpanded(true);
 
-    auto detail = root->addItem("Деталь");
-    auto det3d = root->addItem("3d");
-    auto params = root->addItem("Параметры");
-    
+    auto detail = root->addItem("Полумуфта");
+    detail->setOnClickHandler([this](){
+        if (currentModel) {
+            delete currentModel;
+        }
+        currentModel = new HalfCoupling();
+        updateView();
+    });
+
+    auto detail2 = root->addItem("Еще деталь");
+    detail2->setOnClickHandler([this](){
+        if (currentModel) {
+            delete currentModel;
+        }
+        currentModel = new Detail1();
+        updateView();
+    });
 
     QWidget *container = new QWidget(this);
     QGridLayout *container_layout = new QGridLayout(container);
@@ -77,56 +100,13 @@ void MainWindow::setupUi()
     sketchWidget = new SketchWidget(this);
     glWidget = new GLWidget3D(this);
 
-    detail->setOnDoubleClickHandler([this]() { 
-        sketchWidget->clear();
-        sketchWidget->addLine({{200, 200}, {200, 400}});
-        sketchWidget->addLine({{200, 400}, {400, 400}});
-        sketchWidget->addLine({{400, 400}, {400, 200}});
-        sketchWidget->addLine({{400, 200}, {300, 300}});
-        sketchWidget->addLine({{300, 300}, {200, 200}});
-
-        sketchWidget->addDimensionLine({{300, 300}, {200, 200}});
-
-        // sketchWidget->setShowGrid(true);
-
-        qDebug()<<sketchWidget->findClosedContours();
-    });
-
-    det3d->setOnDoubleClickHandler([this](){
-        
-
-        cubeModel.initModel();
-        cubeModel.generateMesh();
-        // model.exportData();
-
-        // std::array<vec3<float>, 3> triang;
-        // triang = {vec3<float>(0,0,0), vec3<float>(0,1,0), vec3<float>(0,0,1)};
-        // vertex.push_back(triang);
-        glWidget->loadModel(&cubeModel.vertex);
-        // glWidget->loadModel(&model.vertex);
-        // for (auto tri: model.vertex) {
-        //     for (auto pnt : tri) {
-        //         qDebug() << pnt.x << pnt.y << pnt.z;
-        //     }
-        // }
-    });
-
-    params->setOnDoubleClickHandler([this](){
-        auto parameter_selector = new ParameterSelectorDialog({
-            {"12.", "23.", "32."},
-            {"45.", "56.", "78."}
-        });
-        parameter_selector->setHeadings({"param1", "param2", "param3"});
-        parameter_selector->exec();
-        qDebug()<<parameter_selector->selectedParameters();
-    });
-
     stackedWidget->addWidget(sketchWidget);
     stackedWidget->addWidget(glWidget);
 
-    auto *overlay = new OverlayWidget();
+    overlay = new OverlayWidget();
     connect(overlay->modeSwitch, &ViewModeSwitch::modeChanged, this, [&](ViewModeSwitch::Mode newMode){
         stackedWidget->setCurrentIndex(newMode == ViewModeSwitch::Mode3D);
+        updateView();
     });
 
     container_layout->addWidget(stackedWidget, 0, 0);
@@ -152,9 +132,33 @@ void MainWindow::setupUi()
 }
 
 void MainWindow::buildParamSelector() {
-    
+    if (currentModel) {
+        QVector<QStringList> param_strings;
+        std::transform(
+            currentModel->params_table.begin(), 
+            currentModel->params_table.end(), 
+            std::back_inserter(param_strings), 
+            [](const auto& v) { 
+                QStringList sl; for(float f : v) sl << QString::number(f); return sl; 
+            });
+
+        auto parameter_selector = new ParameterSelectorDialog(
+            param_strings, currentModel->selectedParameters, paramSelectorPreview);
+        parameter_selector->setHeadings(currentModel->params_table_headings);
+        connect(parameter_selector, &ParameterSelectorDialog::modelUpdated, this, &MainWindow::updateView);
+        parameter_selector->exec();
+    }
 }
 
-void MainWindow::buildSketch() {
-    
+void MainWindow::updateView() {
+    if (currentModel) {
+        if (overlay->modeSwitch->currentMode() == ViewModeSwitch::Mode2D) {
+            sketchWidget->clear();
+            currentModel->drawSketch(sketchWidget);
+        } else {
+            currentModel->initModel3D();
+            currentModel->generateMesh();
+            glWidget->loadModel(&currentModel->vertex);
+        }
+    }
 }

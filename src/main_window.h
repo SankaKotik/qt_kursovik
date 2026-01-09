@@ -22,11 +22,13 @@ private:
     void setupUi();
 
     void buildParamSelector();
-    void buildSketch();
+    void updateView();
 
     ClickableTreeWidget *tree;
     QStackedWidget *stackedWidget;
     GLWidget3D *glWidget;
     SketchWidget *sketchWidget;
-    Cube cubeModel;
+    OverlayWidget *overlay;
+    bool paramSelectorPreview = true;
+    Model *currentModel = nullptr;
 };
