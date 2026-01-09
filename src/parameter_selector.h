@@ -6,6 +6,7 @@
 #include <QDialogButtonBox>
 #include <QVector>
 #include <QStringList>
+#include <QCheckBox>
 
 class ParameterSelectorDialog : public QDialog
 {
@@ -13,15 +14,23 @@ class ParameterSelectorDialog : public QDialog
 
 public:
     explicit ParameterSelectorDialog(const QVector<QStringList>& data,
+                                    int &selectedParameters, bool &modal,
                                     QWidget* parent = nullptr);
 
-    int selectedParameters() const;
+    int &selectedParameters;
+    int selectedBefore;
+    bool &modal;
     void setHeadings(const QStringList& headings);
+    void setModality(bool &modal);
+
+signals:
+    void modelUpdated();
 
 private slots:
     void onAccept();
+    void onReject();
 
 private:
     QTableWidget* tableWidget;
-    QStringList selectedRowData;
+    QCheckBox* modality;
 };

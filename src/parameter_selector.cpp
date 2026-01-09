@@ -2,10 +2,14 @@
 #include <QHeaderView>
 
 ParameterSelectorDialog::ParameterSelectorDialog(const QVector<QStringList>& data,
-                                                 QWidget* parent)
-    : QDialog(parent)
+                                                int &selectedParameters, bool &modal,
+                                                QWidget* parent)
+    : QDialog(parent),
+    selectedParameters(selectedParameters),
+    modal(modal)
     , tableWidget(new QTableWidget(this))
 {
+    selectedBefore = selectedParameters;
     setWindowTitle("Выбор параметров");
 
     // Настройка таблицы
@@ -28,14 +32,29 @@ ParameterSelectorDialog::ParameterSelectorDialog(const QVector<QStringList>& dat
     tableWidget->horizontalHeader()->setStretchLastSection(true);
     tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
+    tableWidget->selectRow(selectedParameters);
+
+    QLayout *buttonBoxLayout = new QHBoxLayout();
+    modality = new QCheckBox("Предпросмотр");
+    modality->setChecked(modal);
+
     // Кнопки OK/Cancel
     QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttonBox, &QDialogButtonBox::accepted, this, &ParameterSelectorDialog::onAccept);
-    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &ParameterSelectorDialog::onReject);
+    buttonBoxLayout->addWidget(modality);
+    buttonBoxLayout->addWidget(buttonBox);
+
+    connect(tableWidget, &QTableWidget::itemSelectionChanged, this, [this](){
+        if (modality->isChecked()) {
+            this->selectedParameters = tableWidget->currentRow();
+            emit modelUpdated();
+        }
+    });
 
     QVBoxLayout* layout = new QVBoxLayout(this);
     layout->addWidget(tableWidget);
-    layout->addWidget(buttonBox);
+    layout->addLayout(buttonBoxLayout);
 
     setLayout(layout);
     resize(600, 400);
@@ -44,22 +63,18 @@ ParameterSelectorDialog::ParameterSelectorDialog(const QVector<QStringList>& dat
 void ParameterSelectorDialog::onAccept()
 {
     QModelIndexList selected = tableWidget->selectionModel()->selectedRows();
-    if (!selected.isEmpty()) {
-        int row = selected.first().row();
-        selectedRowData.clear();
-        for (int col = 0; col < tableWidget->columnCount(); ++col) {
-            QTableWidgetItem* item = tableWidget->item(row, col);
-            selectedRowData << (item ? item->text() : QString());
-        }
-        accept();
-    } else {
-        
+    if (!selected.isEmpty() && !modality->isChecked()) {
+        selectedParameters = tableWidget->currentRow();
+        emit modelUpdated();
     }
+    modal = modality->isChecked();
+    accept();
 }
 
-int ParameterSelectorDialog::selectedParameters() const
-{
-    return tableWidget->currentRow();
+void ParameterSelectorDialog::onReject() {
+    selectedParameters = selectedBefore;
+    emit modelUpdated();
+    reject();
 }
 
 void ParameterSelectorDialog::setHeadings(const QStringList& headings) {
