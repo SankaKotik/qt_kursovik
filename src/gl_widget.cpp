@@ -98,6 +98,7 @@ void GLWidget3D::resizeGL(int w, int h)
 
 void GLWidget3D::loadModel(std::vector<std::array<vec3<float>, 3>> *_vertex) {
     vertex = _vertex;
+    normals.clear();
     // Создаем VBO и VAO
     makeCurrent();
     gl->glGenVertexArrays(1, &vao);
