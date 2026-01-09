@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.20)  # ← важно!
+cmake_minimum_required(VERSION 3.20)
 project(QtKursovik)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets OpenGLWidgets)
 qt_standard_project_setup()
 
 include(ExternalProject)
@@ -15,7 +15,7 @@ set(OCCT_INCLUDE_DIR "${OCCT_INSTALL_DIR}/include/opencascade")
 set(OCCT_LIBRARY_DIR "${OCCT_INSTALL_DIR}/lib")
 
 # Список модулей
-set(OCCT_MODULES TKernel TKMath TKBRep TKMesh TKPrim TKTopAlgo)
+set(OCCT_MODULES TKGeomBase TKG3d TKernel TKMath TKBRep TKMesh TKPrim TKTopAlgo TKBO)
 
 # Формируем список byproducts
 set(OCCT_BYPRODUCTS)
@@ -52,10 +52,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets Qt6::OpenGLWidgets)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(${PROJECT_NAME} PRIVATE ${OCCT_INCLUDE_DIR})
 
-# Линковка: используем абсолютные пути (Ninja теперь знает, что они появятся)
+# Линковка: используем абсолютные пути
 foreach(mod ${OCCT_MODULES})
     target_link_libraries(${PROJECT_NAME} PRIVATE "${OCCT_LIBRARY_DIR}/lib${mod}.so")
 endforeach()
 
-# Важно: зависимость от цели OpenCASCADE
+# Зависимость от цели OpenCASCADE
 add_dependencies(${PROJECT_NAME} OpenCASCADE)
