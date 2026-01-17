@@ -254,6 +254,73 @@ struct color4u : vec4<uint8_t> {
 //     );
 // }
 
+// Двухкомпонентная матрица
+template <typename T>
+struct mat2 {
+    vec2<T> x, y;
+
+    // Конструктор по умолчанию
+    mat2() : x(1, 0), y(0, 1) {}
+    mat2(T const* v) : 
+    x(v[0], v[1]), 
+    y(v[2], v[3]) {}
+    mat2(std::initializer_list<T> v) : mat2(v.begin()) {}
+
+    static mat2 scale(T x) {
+        mat2 res;
+        res.x.x = x;
+        res.y.y = x;
+        return res;
+    }
+
+    static mat2 scale(T x, T y, T z) {
+        mat2 res;
+        res.x.x = x;
+        res.y.y = y;
+        return res;
+    }
+
+    static mat2 translate(T x, T y, T z) {
+        mat2 res;
+        res.x.w = x;
+        res.y.w = y;
+        return res;
+    }
+
+    // Матрица поворота
+    static mat2 rotate(T x) {
+        return mat2{
+            cos(x), -sin(x),
+            sin(x), cos(x)
+        };
+    }
+
+    // умножение на матрицу
+    mat2 operator*(mat2 other) const {
+        return mat2{
+            x.x * other.x.x + x.y * other.y.x,
+            x.x * other.x.y + x.y * other.y.y,
+
+            y.x * other.x.x + y.y * other.y.x,
+            y.x * other.x.y + y.y * other.y.y,
+        };
+    }
+
+    mat2& operator*=(mat2 other) {
+        *this = other * *this;
+        return *this;
+    }
+
+    // умножение на вектор
+    vec2<T> operator*(vec2<T> other) const {
+        return vec2{
+            x.x * other.x + x.y * other.y,
+            y.x * other.x + y.y * other.y,
+        };
+    }
+    
+};
+
 // Четырехкомпонентная матрица
 template <typename T>
 struct mat4 {
