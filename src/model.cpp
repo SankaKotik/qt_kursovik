@@ -43,7 +43,7 @@ void Model::generateMesh()
     // Триангуляция
     BRepMesh_IncrementalMesh mesh(shape, 0.1);
     if (mesh.IsDone()) {
-        std::cout << ("Сетка успешно создана и сохранена внутри shape\n");
+        if (onStatus) onStatus("Сетка успешно создана и сохранена внутри shape");
     }
 
     for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
@@ -484,8 +484,6 @@ void Sprocket::initModel3D() {
 
     // Количество лапок
     double n = mkr <= 6.3f ? 4 : 6;
-
-    std::cout << n << "\n";
 
     // Выдавливание
     TopoDS_Shape extrusionSolid;

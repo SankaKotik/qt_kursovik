@@ -1,7 +1,6 @@
 #include "main_window.h"
 
 #include <QToolBar>
-#include <QStatusBar>
 #include <QMenuBar>
 #include <QSplitter>
 #include <QMessageBox>
@@ -11,7 +10,6 @@
 #include <vector>
 
 #include "Standard_ErrorHandler.hxx"
-#include "StdFail_NotDone.hxx"
 
 MainWindow::MainWindow(QWidget *parent)
 : QMainWindow(parent)
@@ -78,22 +76,10 @@ void MainWindow::setupUi()
     root->setExpanded(true);
 
     auto detail = root->addItem("Полумуфта");
-    detail->setOnClickHandler([this](){
-        if (currentModel) {
-            delete currentModel;
-        }
-        currentModel = new HalfCoupling();
-        updateView();
-    });
+    detail->setOnClickHandler([this](){ selectModel<HalfCoupling>(); });
 
     auto detail2 = root->addItem("Звездочка");
-    detail2->setOnClickHandler([this](){
-        if (currentModel) {
-            delete currentModel;
-        }
-        currentModel = new Sprocket();
-        updateView();
-    });
+    detail2->setOnClickHandler([this](){ selectModel<Sprocket>(); });
 
     QWidget *container = new QWidget(this);
     QGridLayout *container_layout = new QGridLayout(container);

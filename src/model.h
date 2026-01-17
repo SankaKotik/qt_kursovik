@@ -5,12 +5,16 @@
 
 struct Model
 {
+    virtual ~Model() = default;
+
     TopoDS_Shape shape;
     std::vector<std::array<vec3<float>, 3>> vertex;
     std::vector<std::vector<float>> params_table;
     QStringList params_table_headings;
     char selectedParameters = 0;
     char selectedExecution = 1;
+
+    std::function<void(std::string)> onStatus = nullptr;
 
     virtual void initModel3D() = 0;
     virtual void drawSketch(SketchWidget *sketch) = 0;

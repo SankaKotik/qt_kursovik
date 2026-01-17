@@ -2,6 +2,7 @@
 
 #include <QMainWindow>
 #include <QStackedWidget>
+#include <QStatusBar>
 #include "gl_widget.h"
 #include "sketch_widget.h"
 #include "tools/clickabletreewidget.h"
@@ -23,6 +24,18 @@ private:
 
     void buildParamSelector();
     void updateView();
+
+    template <typename T>
+    void selectModel() {
+        if (currentModel) {
+            delete currentModel;
+        }
+        currentModel = new T();
+        currentModel->onStatus = [this](std::string msg) {
+            statusBar()->showMessage(QString::fromStdString(msg), 5000);
+        };
+        updateView();
+    };
 
     ClickableTreeWidget *tree;
     QStackedWidget *stackedWidget;
