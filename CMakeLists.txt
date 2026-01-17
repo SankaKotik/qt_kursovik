@@ -15,7 +15,11 @@ set(OCCT_INCLUDE_DIR "${OCCT_INSTALL_DIR}/include/opencascade")
 set(OCCT_LIBRARY_DIR "${OCCT_INSTALL_DIR}/lib")
 
 # Список модулей
-set(OCCT_MODULES TKGeomBase TKG3d TKernel TKMath TKBRep TKMesh TKPrim TKTopAlgo TKBO)
+set(OCCT_MODULES 
+    TKernel TKMath TKG2d TKG3d TKGeomBase 
+    TKBRep TKGeomAlgo TKTopAlgo TKPrim 
+    TKShHealing TKBO TKFillet TKMesh
+)
 
 # Формируем список byproducts
 set(OCCT_BYPRODUCTS)

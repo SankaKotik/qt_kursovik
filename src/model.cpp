@@ -2,6 +2,7 @@
 
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Face.hxx>
+#include <TopoDS_Edge.hxx>
 #include <TopoDS.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
@@ -21,7 +22,14 @@
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <BRepFilletAPI_MakeChamfer.hxx>
+#include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
+#include <BRepAlgoAPI_Fuse.hxx>
+#include <BRepAlgoAPI_Common.hxx>
+#include "TopTools_ListOfShape.hxx"
+#include <BRepAdaptor_Curve.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepPrimAPI_MakeRevol.hxx>
@@ -29,7 +37,6 @@
 
 void Model::generateMesh()
 {
-    // if (!vertex) return;
     vertex.clear();
     if (shape.IsNull()) return;
 
@@ -103,12 +110,35 @@ void Cube::drawSketch(SketchWidget *sketch) {
 }
 
 void HalfCoupling::initModel3D() {
-    double l = params_table[selectedParameters][6];
-    double d1 = params_table[selectedParameters][4];
-    double D = params_table[selectedParameters][5];
+    double mkr = params_table[selectedParameters][0];
+    double l3, l2, chamferDistance;
+    if (mkr <= 6.3f) {
+        l2 = 16.0f;
+        l3 = 10.5f;
+        chamferDistance = 1.0f;
+    } else {
+        l2 = params_table[selectedParameters][12];
+        l3 = params_table[selectedParameters][13];
+        chamferDistance = 1.6f;
+    }
+
+    double l = params_table[selectedParameters][selectedExecution == 1 ? 8 : 9];
+    double d1 = params_table[selectedParameters][6];
+    double D = params_table[selectedParameters][7];
     double d = params_table[selectedParameters][1];
-    double dt1 = params_table[selectedParameters][2];
-    double b = params_table[selectedParameters][3];
+    if (d == 0) {
+        std::cout << "1-й ряд является предпочтительным.\n";
+        d = params_table[selectedParameters][2];
+    }
+    double dt1 = params_table[selectedParameters][selectedExecution == 1 || mkr <= 6.3f ? 3 : 4];
+    double b = params_table[selectedParameters][5];
+    double B1 = params_table[selectedParameters][15];
+    double B = params_table[selectedParameters][14];
+    
+    if (!(l2 && l3 && l && d1 && D && d && dt1 && b && B1)) {
+        std::cout << "Выбранного исполнения не существует!\n";
+        return;
+    }
     
     // Вращение
     TopoDS_Shape revolvedSolid;
@@ -116,8 +146,8 @@ void HalfCoupling::initModel3D() {
         gp_Pnt p1(0, 0, 0),
         p2(l, 0, 0),
         p3(l, d1 / 2., 0),
-        p4(16. - 10.5 - 1., d1 / 2., 0),
-        p5(16. - 10.5 - 1., D / 2., 0),
+        p4(l2 - l3 - 1., d1 / 2., 0),
+        p5(l2 - l3 - 1., D / 2., 0),
         p6(0, D / 2., 0);
         
         // Полилиния
@@ -130,13 +160,16 @@ void HalfCoupling::initModel3D() {
         polyMaker.Add(p6);
         polyMaker.Close();
         
-        TopoDS_Wire polyline = polyMaker.Wire();
+        TopoDS_Wire outerWire = polyMaker.Wire();
+
+        // Превращаем Wire в Face, чтобы получить Solid
+        TopoDS_Face face = BRepBuilderAPI_MakeFace(outerWire);
         
         // Ось вращения (Z)
         gp_Ax1 axis(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0));
         
         // Создаем тело вращения на 360 градусов (2*PI)
-        BRepPrimAPI_MakeRevol revolMaker(polyline, axis);
+        BRepPrimAPI_MakeRevol revolMaker(face, axis);
         revolvedSolid = revolMaker.Shape();
     }
     
@@ -194,12 +227,180 @@ void HalfCoupling::initModel3D() {
         
         extrusionSolid = prism.Shape();
     }
-    
-    // Булева: вычитание
-    TopoDS_Shape booleanShape;
+
+    // Булева: Вращение - Выдавливание
+    TopoDS_Shape cutShape;
     {
         BRepAlgoAPI_Cut cutMaker(revolvedSolid, extrusionSolid);
-        booleanShape = cutMaker.Shape();
+        cutMaker.Build();
+        cutShape = cutMaker.Shape();
+    }
+
+    // Фаска
+    TopoDS_Shape chamferSolid;
+    {
+        BRepFilletAPI_MakeChamfer mkChamfer(cutShape);
+
+        // Перебор всех ребер в объекте
+        for (TopExp_Explorer ex(cutShape, TopAbs_EDGE); ex.More(); ex.Next()) {
+            TopoDS_Edge edge = TopoDS::Edge(ex.Current());
+
+            // Адаптор позволяет "заглянуть" внутрь геометрии ребра
+            BRepAdaptor_Curve adaptor(edge);
+
+            // Проверяем тип кривой
+            if (adaptor.GetType() == GeomAbs_Circle) {
+                // Это ребро — окружность или дуга окружности
+                
+                // Теперь можно получить геометрические параметры окружности
+                gp_Circ circle = adaptor.Circle();
+                Standard_Real radius = circle.Radius();
+                gp_Pnt center = circle.Location();
+
+                // Если окружность не на лицевой части муфты
+                if (center.X() > 0) {
+                    mkChamfer.Add(chamferDistance, edge);
+                }
+            }
+        }
+
+        mkChamfer.Build();
+        chamferSolid = mkChamfer.Shape();
+    }
+
+    // Выдавливание 2
+    TopoDS_Shape couplingTooth, toothMount;
+    {
+        gp_Pnt outer_origin(0, 0, 0);
+        gp_Dir normal(-1, 0, 0);
+        gp_Ax3 outer_sketchSystem(outer_origin, normal);
+        
+        // точки 2d
+        gp_Pnt2d outer_sp1, outer_sp2, outer_sp3, outer_sp4;
+        gp_Pnt2d inner_sp1, inner_sp2, inner_sp3, inner_sp4;
+        if (mkr <= 6.3f) {
+            double outer_p23_oneofXY = (B1 / 2) * sqrt(2);
+            outer_sp1 = gp_Pnt2d(0, D / 2),
+            outer_sp2 = gp_Pnt2d(0, outer_p23_oneofXY),
+            outer_sp3 = gp_Pnt2d(outer_p23_oneofXY, 0),
+            outer_sp4 = gp_Pnt2d(D / 2, 0);
+
+            double inner_circlePointY = sqrt(pow(D / 2, 2) - pow(B, 2));
+            double inner_p23_oneofXY = outer_p23_oneofXY - B;
+            inner_sp1 = gp_Pnt2d(B, inner_circlePointY),
+            inner_sp2 = gp_Pnt2d(B, inner_p23_oneofXY),
+            inner_sp3 = gp_Pnt2d(inner_p23_oneofXY, B),
+            inner_sp4 = gp_Pnt2d(inner_circlePointY, B);
+        } else {
+            double outer_p23_oneofXY = (B1 / 2) * sqrt(2);
+            outer_sp1 = gp_Pnt2d(0, D / 2),
+            outer_sp2 = gp_Pnt2d(0, outer_p23_oneofXY),
+            outer_sp3 = gp_Pnt2d(outer_p23_oneofXY, 0),
+            outer_sp4 = gp_Pnt2d(D / 2, 0);
+
+            double inner_circlePointY = sqrt(pow(D / 2, 2) - pow(B, 2));
+            double inner_p23_oneofXY = outer_p23_oneofXY - B;
+            inner_sp1 = gp_Pnt2d(B, inner_circlePointY),
+            inner_sp2 = gp_Pnt2d(B, inner_p23_oneofXY),
+            inner_sp3 = gp_Pnt2d(inner_p23_oneofXY, B),
+            inner_sp4 = gp_Pnt2d(inner_circlePointY, B);
+        }
+        
+        {
+            gp_Trsf rotation;
+            rotation.SetRotation(gp_Ax1(outer_sketchSystem.Location(), outer_sketchSystem.Direction()), -M_PI / 2.0);
+            outer_sketchSystem.Transform(rotation);
+        }
+
+        // Создаем плоскость эскиза
+        gp_Pln outer_sketchPlane(outer_sketchSystem);
+        
+        // Преобразуем в 3D (вычисляет 3D-координату на основе UV-параметров поверхности)
+        gp_Pnt outer_p1 = ElSLib::Value(outer_sp1.X(), outer_sp1.Y(), outer_sketchPlane);
+        gp_Pnt outer_p2 = ElSLib::Value(outer_sp2.X(), outer_sp2.Y(), outer_sketchPlane);
+        gp_Pnt outer_p3 = ElSLib::Value(outer_sp3.X(), outer_sp3.Y(), outer_sketchPlane);
+        gp_Pnt outer_p4 = ElSLib::Value(outer_sp4.X(), outer_sp4.Y(), outer_sketchPlane);
+
+        gp_Pnt inner_p1 = ElSLib::Value(inner_sp1.X(), inner_sp1.Y(), outer_sketchPlane);
+        gp_Pnt inner_p2 = ElSLib::Value(inner_sp2.X(), inner_sp2.Y(), outer_sketchPlane);
+        gp_Pnt inner_p3 = ElSLib::Value(inner_sp3.X(), inner_sp3.Y(), outer_sketchPlane);
+        gp_Pnt inner_p4 = ElSLib::Value(inner_sp4.X(), inner_sp4.Y(), outer_sketchPlane);
+        
+        TopoDS_Edge outer_e1 = BRepBuilderAPI_MakeEdge(outer_p1, outer_p2);
+        TopoDS_Edge outer_e2 = BRepBuilderAPI_MakeEdge(outer_p2, outer_p3);
+        TopoDS_Edge outer_e3 = BRepBuilderAPI_MakeEdge(outer_p3, outer_p4);
+
+        TopoDS_Edge inner_e1 = BRepBuilderAPI_MakeEdge(inner_p1, inner_p2);
+        TopoDS_Edge inner_e2 = BRepBuilderAPI_MakeEdge(inner_p2, inner_p3);
+        TopoDS_Edge inner_e3 = BRepBuilderAPI_MakeEdge(inner_p3, inner_p4);
+        
+        // Окружность для дуги
+        gp_Pnt center(0, 0, 0);
+        gp_Ax2 circleAx(center, gp_Dir(1, 0, 0));
+        gp_Circ circle(circleAx, D / 2);
+        
+        // Дуга по окружности и двум точкам
+        GC_MakeArcOfCircle outer_arcMaker(circle, outer_p1, outer_p4, true); 
+        TopoDS_Edge outer_e4 = BRepBuilderAPI_MakeEdge(outer_arcMaker.Value());
+
+        GC_MakeArcOfCircle inner_arcMaker(circle, inner_p1, inner_p4, true); 
+        TopoDS_Edge inner_e4 = BRepBuilderAPI_MakeEdge(inner_arcMaker.Value());
+        
+        BRepBuilderAPI_MakeWire outer_wireMaker;
+        outer_wireMaker.Add(outer_e1); outer_wireMaker.Add(outer_e2); 
+        outer_wireMaker.Add(outer_e3); outer_wireMaker.Add(outer_e4);
+        TopoDS_Wire outerWire = outer_wireMaker.Wire();
+
+        BRepBuilderAPI_MakeWire inner_wireMaker;
+        inner_wireMaker.Add(inner_e1); inner_wireMaker.Add(inner_e2); 
+        inner_wireMaker.Add(inner_e3); inner_wireMaker.Add(inner_e4);
+        TopoDS_Wire innerWire = inner_wireMaker.Wire();
+        
+        TopoDS_Face outer_face = BRepBuilderAPI_MakeFace(outerWire);
+        TopoDS_Face inner_face = BRepBuilderAPI_MakeFace(innerWire);
+        
+        gp_Vec extrusionVec(-1, 0, 0);
+        gp_Vec extrusionVec2(-11.5, 0, 0);
+        BRepPrimAPI_MakePrism outer_prism(outer_face, extrusionVec);
+        BRepPrimAPI_MakePrism inner_prism(inner_face, extrusionVec2);
+        
+        toothMount = outer_prism.Shape();
+        couplingTooth = inner_prism.Shape();
+    }
+
+    TopoDS_Shape rotatedSolid, rotatedSolid2;
+    {
+        // Ось вращения
+        gp_Ax1 rotationAxis(gp_Pnt(0, 0, 0), gp_Dir(-1, 0, 0));
+
+        Standard_Real angle = M_PI; // Поворот на 180 градусов
+
+        gp_Trsf trans;
+        trans.SetRotation(rotationAxis, angle);
+        BRepBuilderAPI_Transform mount_transformer(toothMount, trans);
+        BRepBuilderAPI_Transform tooth_transformer(couplingTooth, trans);
+        rotatedSolid = mount_transformer.Shape();
+        rotatedSolid2 = tooth_transformer.Shape();
+    }
+
+    // Булева
+    TopoDS_Shape booleanShape;
+    {
+        // Добавление
+        TopTools_ListOfShape arguments;
+        TopTools_ListOfShape tools;
+        arguments.Append(chamferSolid);
+        tools.Append(toothMount);
+        tools.Append(couplingTooth);
+        tools.Append(rotatedSolid);
+        tools.Append(rotatedSolid2);
+        
+        BRepAlgoAPI_Fuse fuseMaker;
+        fuseMaker.SetArguments(arguments);
+        fuseMaker.SetTools(tools);
+        fuseMaker.Build();
+        
+        booleanShape = fuseMaker.Shape();
     }
     
     shape = booleanShape;
@@ -271,4 +472,171 @@ void Detail1::drawSketch(SketchWidget *sketch) {
     sketch->addLine({{300, 300}, {200, 200}});
 
     sketch->addDimensionLine({{300, 300}, {200, 200}});
+}
+
+void Sprocket::initModel3D() {
+    double mkr = params_table[selectedParameters][0];
+    double D = params_table[selectedParameters][1];
+    double d = params_table[selectedParameters][2];
+    double B = params_table[selectedParameters][3];
+    double H = mkr <= 6.3f ? 10.5f : params_table[selectedParameters][4];
+    double r = params_table[selectedParameters][5];
+
+    // Количество лапок
+    double n = mkr <= 6.3f ? 4 : 6;
+
+    std::cout << n << "\n";
+
+    // Выдавливание
+    TopoDS_Shape extrusionSolid;
+    {
+        double angleStep = 2 * M_PI / n;
+        double halfWidth = B / 2;
+        // Полилиния
+        BRepBuilderAPI_MakePolygon polyMaker;
+        for (int i = 0; i < n; ++i) {
+            double angle = i * angleStep;  // текущий угол луча
+            mat2<double> rotation = mat2<double>::rotate(angle);
+            
+            vec2<double> p1 = rotation * vec2(B / 2, D);
+            vec2<double> p2 = rotation * vec2(-B / 2, D);
+
+            // с учетом будущего скругления
+            vec2<double> p3 = rotation * vec2(
+                -B / 2,
+                mkr <= 6.3f ? B / 2 :
+                sqrt(pow(d / 2 - r * M_PI_2, 2) - pow(B / 2, 2))
+            );
+
+            polyMaker.Add(gp_Pnt(p1.x, p1.y, 0));
+            polyMaker.Add(gp_Pnt(p2.x, p2.y, 0));
+            polyMaker.Add(gp_Pnt(p3.x, p3.y, 0));
+        }
+        polyMaker.Close();
+        
+        TopoDS_Wire outerWire = polyMaker.Wire();
+
+        // Превращаем Wire в Face, чтобы получить Solid
+        TopoDS_Face face = BRepBuilderAPI_MakeFace(outerWire);
+        
+        gp_Vec extrusionVec(0, 0, H); 
+        BRepPrimAPI_MakePrism prismMaker(face, extrusionVec);
+        extrusionSolid = prismMaker.Shape();
+    }
+
+    // Выдавливание окружности
+    TopoDS_Shape extrusionSolid2;
+    {
+        gp_Circ circleGeom(
+            gp_Ax2(
+                gp_Pnt(0, 0, 0), 
+                gp_Dir(0, 0, 1)
+            ),
+            D / 2
+        );
+
+        TopoDS_Edge circleEdge = BRepBuilderAPI_MakeEdge(circleGeom);
+        TopoDS_Wire circleWire = BRepBuilderAPI_MakeWire(circleEdge);
+        TopoDS_Face circleFace = BRepBuilderAPI_MakeFace(circleWire);
+
+        gp_Vec extrusionVec(0, 0, H);
+        BRepPrimAPI_MakePrism prismMaker(circleFace, extrusionVec);
+        extrusionSolid2 = prismMaker.Shape();
+    }
+
+    // Булева: пересечение
+    TopoDS_Shape booleanSolid;
+    {
+        BRepAlgoAPI_Common commonMaker(extrusionSolid, extrusionSolid2);
+        booleanSolid = commonMaker.Shape();
+    }
+
+    // Скругление
+    TopoDS_Shape filletSolid;
+    {
+        BRepFilletAPI_MakeFillet mkFillet(booleanSolid);
+
+        // Проходимся по ребрам
+        for (TopExp_Explorer ex(booleanSolid, TopAbs_EDGE); ex.More(); ex.Next()) {
+            TopoDS_Edge edge = TopoDS::Edge(ex.Current());
+
+            BRepAdaptor_Curve adaptor(edge);
+
+            // Кривая должна быть прямой линией
+            if (adaptor.GetType() == GeomAbs_Line) {                
+                gp_Lin line = adaptor.Line();
+                Standard_Real f = adaptor.FirstParameter();
+                Standard_Real l = adaptor.LastParameter();
+
+                gp_Pnt startPoint = adaptor.Value(f); // Точка начала
+                gp_Pnt endPoint = adaptor.Value(l);   // Точка конца
+
+                // Оставляем только прямые, параллельные оси Z
+                if (abs(startPoint.X() - endPoint.X()) < 0.001 && 
+                abs(startPoint.Y() - endPoint.Y()) < 0.001) {
+                    double distance = vec2(startPoint.X(), startPoint.Y()).length();
+                    if (mkr <= 6.3f) {
+                        // 1е исполнение: проверяем координаты по отдельности
+                        if (abs(abs(startPoint.X()) - B / 2) < 0.001 && abs(abs(startPoint.Y()) - B / 2) < 0.001) {
+                            mkFillet.Add(r, edge);
+                        }
+                    } else {
+                        // 2е исполнение: проверяем расстояние до точки
+                        if (distance < d / 2) {
+                            mkFillet.Add(r, edge);
+                        }
+                    }
+                }
+            }
+        }
+
+        mkFillet.Build();
+        filletSolid = mkFillet.Shape();
+    }
+
+    shape = filletSolid;
+}
+
+void Sprocket::drawSketch(SketchWidget *sketch) {
+    double mkr = params_table[selectedParameters][0];
+    double D = params_table[selectedParameters][1];
+    double d = params_table[selectedParameters][2];
+    double B = params_table[selectedParameters][3];
+    double H = params_table[selectedParameters][4];
+    double r = params_table[selectedParameters][5];
+
+    // Количество лапок
+    double n = mkr <= 6.3f ? 4 : 6;
+    {
+        double angleStep = 2 * M_PI / n;
+        double halfWidth = B / 2;
+
+        vec2<double> first_p, old_p;
+        for (int i = 0; i < n; ++i) {
+            double angle = i * angleStep;  // текущий угол луча
+            mat2<double> rotation = mat2<double>::rotate(angle);
+            
+            vec2<double> p1 = rotation * vec2(B / 2, D);
+            vec2<double> p2 = rotation * vec2(-B / 2, D);
+
+            // с учетом будущего скругления
+            vec2<double> p3 = rotation * vec2(
+                -B / 2,
+                mkr <= 6.3f ? B / 2 :
+                sqrt(pow(d / 2 - r * M_PI_2, 2) - pow(B / 2, 2))
+            );
+
+            sketch->addLine({{p1.x, p1.y}, {p2.x, p2.y}});
+            sketch->addLine({{p2.x, p2.y}, {p3.x, p3.y}});
+            if (i != 0) {
+                sketch->addLine({{old_p.x, old_p.y}, {p1.x, p1.y}});
+            } 
+            if (i == 0) {
+                first_p = p1;
+            } else if (i == n - 1) {
+                sketch->addLine({{first_p.x, first_p.y}, {p3.x, p3.y}});
+            }
+            old_p = p3;
+        }
+    }
 }
