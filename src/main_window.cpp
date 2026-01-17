@@ -1,4 +1,5 @@
 #include "main_window.h"
+
 #include <QToolBar>
 #include <QStatusBar>
 #include <QMenuBar>
@@ -8,6 +9,9 @@
 #include <QRadioButton>
 #include <QHBoxLayout>
 #include <vector>
+
+#include "Standard_ErrorHandler.hxx"
+#include "StdFail_NotDone.hxx"
 
 MainWindow::MainWindow(QWidget *parent)
 : QMainWindow(parent)
@@ -82,12 +86,12 @@ void MainWindow::setupUi()
         updateView();
     });
 
-    auto detail2 = root->addItem("Еще деталь");
+    auto detail2 = root->addItem("Звездочка");
     detail2->setOnClickHandler([this](){
         if (currentModel) {
             delete currentModel;
         }
-        currentModel = new Detail1();
+        currentModel = new Sprocket();
         updateView();
     });
 
@@ -143,7 +147,7 @@ void MainWindow::buildParamSelector() {
             });
 
         auto parameter_selector = new ParameterSelectorDialog(
-            param_strings, currentModel->selectedParameters, paramSelectorPreview);
+            param_strings, currentModel, paramSelectorPreview, this);
         parameter_selector->setHeadings(currentModel->params_table_headings);
         connect(parameter_selector, &ParameterSelectorDialog::modelUpdated, this, &MainWindow::updateView);
         parameter_selector->exec();
@@ -156,7 +160,14 @@ void MainWindow::updateView() {
             sketchWidget->clear();
             currentModel->drawSketch(sketchWidget);
         } else {
-            currentModel->initModel3D();
+            // Обработка исключений при построении модели
+            try {
+                OCC_CATCH_SIGNALS
+                currentModel->initModel3D();
+            } catch (const Standard_Failure& theFailure) {
+                // Получаем текст ошибки и имя конкретного типа исключения
+                QMessageBox::critical(this, theFailure.DynamicType()->Name(), theFailure.GetMessageString());
+            }
             currentModel->generateMesh();
             glWidget->loadModel(&currentModel->vertex);
         }
