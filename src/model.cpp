@@ -503,7 +503,7 @@ void Sprocket::initModel3D() {
             vec2<double> p3 = rotation * vec2(
                 -B / 2,
                 mkr <= 6.3f ? B / 2 :
-                sqrt(pow(d / 2 - r * M_PI_2, 2) - pow(B / 2, 2))
+                (B / 2) / tan(M_PI / 6)
             );
 
             polyMaker.Add(gp_Pnt(p1.x, p1.y, 0));
@@ -621,7 +621,7 @@ void Sprocket::drawSketch(SketchWidget *sketch) {
             vec2<double> p3 = rotation * vec2(
                 -B / 2,
                 mkr <= 6.3f ? B / 2 :
-                sqrt(pow(d / 2 - r * M_PI_2, 2) - pow(B / 2, 2))
+                (B / 2) / tan(M_PI / 6)
             );
 
             sketch->addLine({{p1.x, p1.y}, {p2.x, p2.y}});
