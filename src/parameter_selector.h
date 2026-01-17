@@ -7,6 +7,10 @@
 #include <QVector>
 #include <QStringList>
 #include <QCheckBox>
+#include <QRadioButton>
+#include <QButtonGroup>
+#include <QGroupBox>
+#include "model.h"
 
 class ParameterSelectorDialog : public QDialog
 {
@@ -14,10 +18,9 @@ class ParameterSelectorDialog : public QDialog
 
 public:
     explicit ParameterSelectorDialog(const QVector<QStringList>& data,
-                                    int &selectedParameters, bool &modal,
+                                    Model* &modelRef, bool &modal,
                                     QWidget* parent = nullptr);
 
-    int &selectedParameters;
     int selectedBefore;
     bool &modal;
     void setHeadings(const QStringList& headings);
@@ -33,4 +36,5 @@ private slots:
 private:
     QTableWidget* tableWidget;
     QCheckBox* modality;
+    Model* &m_modelRef;
 };
