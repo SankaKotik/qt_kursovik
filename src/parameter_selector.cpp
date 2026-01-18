@@ -33,8 +33,8 @@ ParameterSelectorDialog::ParameterSelectorDialog(const QVector<QStringList>& dat
             radio2->setChecked(true);
         }
 
-        connect(executionSelection, &QButtonGroup::idToggled, [this](int id) {
-            if (modality->isChecked()) {
+        connect(executionSelection, &QButtonGroup::idToggled, [this](int id, bool checked) {
+            if (modality->isChecked() && checked) {
                 m_modelRef->selectedExecution = id;
                 emit modelUpdated();
             }
