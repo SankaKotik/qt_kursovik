@@ -10,6 +10,7 @@ ParameterSelectorDialog::ParameterSelectorDialog(const QVector<QStringList>& dat
     , tableWidget(new QTableWidget(this))
 {
     selectedBefore = m_modelRef->selectedParameters;
+    selectedExecutionBefore = m_modelRef->selectedExecution;
     setWindowTitle("Выбор параметров");
 
     QGroupBox *groupBox = new QGroupBox("Исполнение", this);
@@ -17,9 +18,9 @@ ParameterSelectorDialog::ParameterSelectorDialog(const QVector<QStringList>& dat
         QRadioButton *radio1 = new QRadioButton("Исполнение 1");
         QRadioButton *radio2 = new QRadioButton("Исполнение 2");
 
-        QButtonGroup *buttonGroup = new QButtonGroup(this);
-        buttonGroup->addButton(radio1, 1); // ID 1
-        buttonGroup->addButton(radio2, 2); // ID 2
+        executionSelection = new QButtonGroup(this);
+        executionSelection->addButton(radio1, 1); // ID 1
+        executionSelection->addButton(radio2, 2); // ID 2
 
         QHBoxLayout *hbox = new QHBoxLayout;
         hbox->addWidget(radio1);
@@ -32,9 +33,11 @@ ParameterSelectorDialog::ParameterSelectorDialog(const QVector<QStringList>& dat
             radio2->setChecked(true);
         }
 
-        connect(buttonGroup, &QButtonGroup::idToggled, [this](int id) {
-            m_modelRef->selectedExecution = id;
-            emit modelUpdated();
+        connect(executionSelection, &QButtonGroup::idToggled, [this](int id) {
+            if (modality->isChecked()) {
+                m_modelRef->selectedExecution = id;
+                emit modelUpdated();
+            }
         });
     }
 
@@ -89,9 +92,17 @@ ParameterSelectorDialog::ParameterSelectorDialog(const QVector<QStringList>& dat
 
 void ParameterSelectorDialog::onAccept()
 {
+    bool modelIsDirty = false;
     QModelIndexList selected = tableWidget->selectionModel()->selectedRows();
     if (!selected.isEmpty() && m_modelRef->selectedParameters != tableWidget->currentRow()) {
         m_modelRef->selectedParameters = tableWidget->currentRow();
+        modelIsDirty = true;
+    }
+    if (m_modelRef->selectedExecution != executionSelection->checkedId()) {
+        m_modelRef->selectedExecution = executionSelection->checkedId();
+        modelIsDirty = true;
+    }
+    if (modelIsDirty) {
         emit modelUpdated();
     }
     modal = modality->isChecked();
@@ -99,8 +110,16 @@ void ParameterSelectorDialog::onAccept()
 }
 
 void ParameterSelectorDialog::onReject() {
+    bool modelIsDirty = false;
     if (m_modelRef->selectedParameters != selectedBefore) {
         m_modelRef->selectedParameters = selectedBefore;
+        modelIsDirty = true;
+    }
+    if (m_modelRef->selectedExecution != selectedExecutionBefore) {
+        m_modelRef->selectedExecution = selectedExecutionBefore;
+        modelIsDirty = true;
+    }
+    if (modelIsDirty) {
         emit modelUpdated();
     }
     reject();

@@ -35,6 +35,12 @@
 #include <BRepPrimAPI_MakeRevol.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 
+ModelNotifier::ModelNotifier(QObject *parent)
+    : QObject()
+{
+    
+}
+
 void Model::generateMesh()
 {
     vertex.clear();
@@ -43,7 +49,9 @@ void Model::generateMesh()
     // Триангуляция
     BRepMesh_IncrementalMesh mesh(shape, 0.1);
     if (mesh.IsDone()) {
-        if (onStatus) onStatus("Сетка успешно создана и сохранена внутри shape");
+        if (notifier) {
+            emit notifier->statusChanged("Сетка успешно создана и сохранена внутри shape");
+        }
     }
 
     for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
@@ -110,6 +118,10 @@ void Cube::drawSketch(SketchWidget *sketch) {
 }
 
 void HalfCoupling::initModel3D() {
+    if (notifier) {
+        emit notifier->statusChanged("Обновление модели...");
+    }
+
     double mkr = params_table[selectedParameters][0];
     double l3, l2, chamferDistance;
     if (mkr <= 6.3f) {
@@ -127,16 +139,17 @@ void HalfCoupling::initModel3D() {
     double D = params_table[selectedParameters][7];
     double d = params_table[selectedParameters][1];
     if (d == 0) {
-        std::cout << "1-й ряд является предпочтительным.\n";
+        if (notifier) { notifier->warningIssued("1-й ряд является предпочтительным."); }
         d = params_table[selectedParameters][2];
     }
     double dt1 = params_table[selectedParameters][selectedExecution == 1 || mkr <= 6.3f ? 3 : 4];
     double b = params_table[selectedParameters][5];
     double B1 = params_table[selectedParameters][15];
     double B = params_table[selectedParameters][14];
+    double r = params_table[selectedParameters][16];
     
-    if (!(l2 && l3 && l && d1 && D && d && dt1 && b && B1)) {
-        std::cout << "Выбранного исполнения не существует!\n";
+    if (!(l2 && l3 && l && d1 && D && d && dt1 && b && B1 && B && r)) {
+        if (notifier) { notifier->errorOccurred("Выбранного исполнения не существует!"); }
         return;
     }
     
@@ -190,7 +203,7 @@ void HalfCoupling::initModel3D() {
         
         // Поворот систему координат эскиза на 45 градусов относительно нормали
         gp_Trsf rotation;
-        rotation.SetRotation(gp_Ax1(sketchSystem.Location(), sketchSystem.Direction()), 45.0 * M_PI / 180.0);
+        rotation.SetRotation(gp_Ax1(sketchSystem.Location(), sketchSystem.Direction()), (mkr <= 6.3f ? 45.0 : 30.0) * M_PI / 180.0);
         sketchSystem.Transform(rotation);
         
         // Создаем плоскость эскиза
@@ -268,9 +281,46 @@ void HalfCoupling::initModel3D() {
         chamferSolid = mkChamfer.Shape();
     }
 
+    // Скругление
+    TopoDS_Shape filletSolid;
+    {
+        BRepFilletAPI_MakeFillet mkFillet(chamferSolid);
+
+        // Проходимся по ребрам
+        for (TopExp_Explorer ex(chamferSolid, TopAbs_EDGE); ex.More(); ex.Next()) {
+            TopoDS_Edge edge = TopoDS::Edge(ex.Current());
+
+            BRepAdaptor_Curve adaptor(edge);
+
+            // Кривая должна быть прямой линией
+            if (adaptor.GetType() == GeomAbs_Line) {                
+                gp_Lin line = adaptor.Line();
+                Standard_Real f = adaptor.FirstParameter();
+                Standard_Real l = adaptor.LastParameter();
+
+                gp_Pnt startPoint = adaptor.Value(f); // Точка начала
+                gp_Pnt endPoint = adaptor.Value(l);   // Точка конца
+
+                // Оставляем только прямые, параллельные оси X
+                if (abs(startPoint.Z() - endPoint.Z()) < 0.001 && 
+                abs(startPoint.Y() - endPoint.Y()) < 0.001) {
+                    double distance = vec2(startPoint.Z(), startPoint.Y()).length();
+                    double neededDistance = vec2(b / 2., dt1 - d / 2).length();
+                    if (abs(distance - neededDistance) < 0.001) {
+                        mkFillet.Add(r, edge);
+                    }
+                }
+            }
+        }
+
+        mkFillet.Build();
+        filletSolid = mkFillet.Shape();
+    }
+
     // Выдавливание 2
     TopoDS_Shape couplingTooth, toothMount;
     {
+        bool isTriangleTooth = false; // зуб является треугольным, а не трапециевидным
         gp_Pnt outer_origin(0, 0, 0);
         gp_Dir normal(-1, 0, 0);
         gp_Ax3 outer_sketchSystem(outer_origin, normal);
@@ -292,23 +342,31 @@ void HalfCoupling::initModel3D() {
             inner_sp3 = gp_Pnt2d(inner_p23_oneofXY, B),
             inner_sp4 = gp_Pnt2d(inner_circlePointY, B);
         } else {
-            double outer_p23_oneofXY = (B1 / 2) * sqrt(2);
+            gp_Pnt2d center(0.0, 0.0);
             outer_sp1 = gp_Pnt2d(0, D / 2),
-            outer_sp2 = gp_Pnt2d(0, outer_p23_oneofXY),
-            outer_sp3 = gp_Pnt2d(outer_p23_oneofXY, 0),
-            outer_sp4 = gp_Pnt2d(D / 2, 0);
+            outer_sp2 = gp_Pnt2d(0, B1 * cos(M_PI / 6)),
+            outer_sp3 = outer_sp2.Rotated(center, -M_PI / 3),
+            outer_sp4 = outer_sp1.Rotated(center, -M_PI / 3);
 
-            double inner_circlePointY = sqrt(pow(D / 2, 2) - pow(B, 2));
-            double inner_p23_oneofXY = outer_p23_oneofXY - B;
-            inner_sp1 = gp_Pnt2d(B, inner_circlePointY),
-            inner_sp2 = gp_Pnt2d(B, inner_p23_oneofXY),
-            inner_sp3 = gp_Pnt2d(inner_p23_oneofXY, B),
-            inner_sp4 = gp_Pnt2d(inner_circlePointY, B);
+            inner_sp1 = gp_Pnt2d(B, sqrt(pow(D / 2, 2) - pow(B, 2))),
+            inner_sp2 = gp_Pnt2d(B, (B-outer_sp2.X()) * (outer_sp3.Y()-outer_sp2.Y()) / (outer_sp3.X()-outer_sp2.X()) + outer_sp2.Y());
+
+            gp_Dir2d direction(cos(M_PI / 3), sin(M_PI / 3));
+            gp_Ax2d mirrorAxis(gp_Pnt2d(0, 0), direction);
+
+            inner_sp3 = inner_sp2.Mirrored(mirrorAxis),
+            inner_sp4 = inner_sp1.Mirrored(mirrorAxis);
+
+            // Некоторые исполнения заставляют точки p2 и p3 слиться в одну
+            // (p2 лежит на оси зеркалирования). Обработаем такой случай отдельно
+            if (inner_sp2.IsEqual(inner_sp3, 0.001)) {
+                isTriangleTooth = true;
+            }
         }
         
         {
             gp_Trsf rotation;
-            rotation.SetRotation(gp_Ax1(outer_sketchSystem.Location(), outer_sketchSystem.Direction()), -M_PI / 2.0);
+            rotation.SetRotation(gp_Ax1(outer_sketchSystem.Location(), outer_sketchSystem.Direction()), mkr <= 6.3f ? -M_PI / 2 : M_PI / 3);
             outer_sketchSystem.Transform(rotation);
         }
 
@@ -352,35 +410,24 @@ void HalfCoupling::initModel3D() {
         TopoDS_Wire outerWire = outer_wireMaker.Wire();
 
         BRepBuilderAPI_MakeWire inner_wireMaker;
-        inner_wireMaker.Add(inner_e1); inner_wireMaker.Add(inner_e2); 
-        inner_wireMaker.Add(inner_e3); inner_wireMaker.Add(inner_e4);
+        inner_wireMaker.Add(inner_e1);
+        if (!isTriangleTooth) {
+            inner_wireMaker.Add(inner_e2);
+        }
+        inner_wireMaker.Add(inner_e3);
+        inner_wireMaker.Add(inner_e4);
         TopoDS_Wire innerWire = inner_wireMaker.Wire();
         
         TopoDS_Face outer_face = BRepBuilderAPI_MakeFace(outerWire);
         TopoDS_Face inner_face = BRepBuilderAPI_MakeFace(innerWire);
         
         gp_Vec extrusionVec(-1, 0, 0);
-        gp_Vec extrusionVec2(-11.5, 0, 0);
+        gp_Vec extrusionVec2(-l3, 0, 0);
         BRepPrimAPI_MakePrism outer_prism(outer_face, extrusionVec);
         BRepPrimAPI_MakePrism inner_prism(inner_face, extrusionVec2);
         
         toothMount = outer_prism.Shape();
         couplingTooth = inner_prism.Shape();
-    }
-
-    TopoDS_Shape rotatedSolid, rotatedSolid2;
-    {
-        // Ось вращения
-        gp_Ax1 rotationAxis(gp_Pnt(0, 0, 0), gp_Dir(-1, 0, 0));
-
-        Standard_Real angle = M_PI; // Поворот на 180 градусов
-
-        gp_Trsf trans;
-        trans.SetRotation(rotationAxis, angle);
-        BRepBuilderAPI_Transform mount_transformer(toothMount, trans);
-        BRepBuilderAPI_Transform tooth_transformer(couplingTooth, trans);
-        rotatedSolid = mount_transformer.Shape();
-        rotatedSolid2 = tooth_transformer.Shape();
     }
 
     // Булева
@@ -389,11 +436,28 @@ void HalfCoupling::initModel3D() {
         // Добавление
         TopTools_ListOfShape arguments;
         TopTools_ListOfShape tools;
-        arguments.Append(chamferSolid);
+        arguments.Append(filletSolid);
         tools.Append(toothMount);
         tools.Append(couplingTooth);
-        tools.Append(rotatedSolid);
-        tools.Append(rotatedSolid2);
+
+        // Копирование вращением
+        {
+            // сколько раз вращаем
+            int rotCount = mkr <= 6.3f ? 2 : 3;
+            // ось вращения
+            gp_Ax1 rotationAxis(gp_Pnt(0, 0, 0), gp_Dir(-1, 0, 0));
+
+            double angle = 2 * M_PI / rotCount;
+
+            for (int i = 1; i <= rotCount; ++i) {
+                gp_Trsf trans;
+                trans.SetRotation(rotationAxis, angle * i);
+                BRepBuilderAPI_Transform mount_transformer(toothMount, trans);
+                BRepBuilderAPI_Transform tooth_transformer(couplingTooth, trans);
+                tools.Append(mount_transformer.Shape());
+                tools.Append(tooth_transformer.Shape());
+            }
+        }
         
         BRepAlgoAPI_Fuse fuseMaker;
         fuseMaker.SetArguments(arguments);
@@ -402,8 +466,33 @@ void HalfCoupling::initModel3D() {
         
         booleanShape = fuseMaker.Shape();
     }
+
+    // Фаска
+    TopoDS_Shape toothChamfer;
+    {
+        BRepFilletAPI_MakeChamfer mkChamfer(booleanShape);
+
+        // Перебор всех ребер в объекте
+        for (TopExp_Explorer ex(booleanShape, TopAbs_EDGE); ex.More(); ex.Next()) {
+            TopoDS_Edge edge = TopoDS::Edge(ex.Current());
+            BRepAdaptor_Curve adaptor(edge);
+
+            if (adaptor.GetType() == GeomAbs_Circle) {
+                gp_Circ circle = adaptor.Circle();
+                Standard_Real radius = circle.Radius();
+                gp_Pnt center = circle.Location();
+
+                if (center.X() < -1.) {
+                    mkChamfer.Add(chamferDistance, edge);
+                }
+            }
+        }
+
+        mkChamfer.Build();
+        chamferSolid = mkChamfer.Shape();
+    }
     
-    shape = booleanShape;
+    shape = chamferSolid;
 }
 
 void HalfCoupling::drawSketch(SketchWidget *sketch) {
@@ -422,12 +511,16 @@ void HalfCoupling::drawSketch(SketchWidget *sketch) {
     p5(16. - 10.5 - 1., D / 2.),
     p6(0, D / 2.);
     
-    sketch->addLine({p1, p2});
-    sketch->addLine({p2, p3});
-    sketch->addLine({p3, p4});
-    sketch->addLine({p4, p5});
-    sketch->addLine({p5, p6});
-    sketch->addLine({p6, p1});
+    // sketch->addLine({p1, p2});
+    // sketch->addLine({p2, p3});
+    // sketch->addLine({p3, p4});
+    // sketch->addLine({p4, p5});
+    // sketch->addLine({p5, p6});
+    // sketch->addLine({p6, p1});
+
+    sketch->addLine({{5, 52.7636}, {5, 9.2376}});
+    sketch->addLine({{5, 9.2376}, {-5.5, -8.94893}});
+    sketch->addLine({{-5.5, -8.94893}, {-43.1946, -30.7119}});
 }
 
 void Detail1::initModel3D() {

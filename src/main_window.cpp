@@ -3,10 +3,11 @@
 #include <QToolBar>
 #include <QMenuBar>
 #include <QSplitter>
-#include <QMessageBox>
 #include <QButtonGroup>
 #include <QRadioButton>
 #include <QHBoxLayout>
+#include <QtConcurrent>
+#include <QFuture>
 #include <vector>
 
 #include "Standard_ErrorHandler.hxx"
@@ -142,20 +143,29 @@ void MainWindow::buildParamSelector() {
 
 void MainWindow::updateView() {
     if (currentModel) {
+        setEnabled(false);
         if (overlay->modeSwitch->currentMode() == ViewModeSwitch::Mode2D) {
             sketchWidget->clear();
             currentModel->drawSketch(sketchWidget);
         } else {
-            // Обработка исключений при построении модели
-            try {
-                OCC_CATCH_SIGNALS
-                currentModel->initModel3D();
-            } catch (const Standard_Failure& theFailure) {
-                // Получаем текст ошибки и имя конкретного типа исключения
-                QMessageBox::critical(this, theFailure.DynamicType()->Name(), theFailure.GetMessageString());
-            }
-            currentModel->generateMesh();
-            glWidget->loadModel(&currentModel->vertex);
+            // Получаем фьючер
+            auto future = QtConcurrent::run([this]() {
+                // Обработка исключений при построении модели
+                try {
+                    OCC_CATCH_SIGNALS
+                    currentModel->initModel3D();
+                } catch (const Standard_Failure& theFailure) {
+                    // Получаем текст ошибки и имя конкретного типа исключения
+                    QMessageBox::critical(this, theFailure.DynamicType()->Name(), theFailure.GetMessageString());
+                }
+            });
+
+            // Запускаем процесс в отдельном потоке
+            future.then(this, [this]() {
+                currentModel->generateMesh();
+                glWidget->loadModel(&currentModel->vertex);
+                setEnabled(true);
+            });
         }
     }
 }

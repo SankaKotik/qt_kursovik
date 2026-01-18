@@ -4,7 +4,7 @@ project(QtKursovik)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets OpenGLWidgets Concurrent)
 qt_standard_project_setup()
 
 include(ExternalProject)
@@ -50,7 +50,7 @@ file(GLOB_RECURSE sources_h CONFIGURE_DEPENDS src/*.h)
 add_executable(${PROJECT_NAME} ${sources_cpp} ${sources_h})
 
 # Qt
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets Qt6::OpenGLWidgets)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets Qt6::OpenGLWidgets Qt6::Concurrent)
 
 # Заголовки OCCT
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

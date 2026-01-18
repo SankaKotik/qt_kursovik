@@ -22,6 +22,7 @@ public:
                                     QWidget* parent = nullptr);
 
     int selectedBefore;
+    int selectedExecutionBefore;
     bool &modal;
     void setHeadings(const QStringList& headings);
     void setModality(bool &modal);
@@ -35,6 +36,7 @@ private slots:
 
 private:
     QTableWidget* tableWidget;
+    QButtonGroup *executionSelection;
     QCheckBox* modality;
     Model* &m_modelRef;
 };

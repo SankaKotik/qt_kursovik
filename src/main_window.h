@@ -3,6 +3,9 @@
 #include <QMainWindow>
 #include <QStackedWidget>
 #include <QStatusBar>
+#include <QMessageBox>
+#include <QProgressBar>
+#include <QCoreApplication>
 #include "gl_widget.h"
 #include "sketch_widget.h"
 #include "tools/clickabletreewidget.h"
@@ -31,9 +34,21 @@ private:
             delete currentModel;
         }
         currentModel = new T();
-        currentModel->onStatus = [this](std::string msg) {
-            statusBar()->showMessage(QString::fromStdString(msg), 5000);
-        };
+        ModelNotifier* modelBridge = new ModelNotifier(this);
+        currentModel->notifier = modelBridge;
+
+        connect(modelBridge, &ModelNotifier::statusChanged, this, [this](const QString &msg) {
+            statusBar()->showMessage(msg);
+        });
+        
+        connect(modelBridge, &ModelNotifier::errorOccurred, this, [this](const QString &msg) {
+            QMessageBox::critical(this, "Ошибка построения модели", msg);
+        });
+
+        connect(modelBridge, &ModelNotifier::warningIssued, this, [this](const QString &msg) {
+            QMessageBox::information(this, "Обратите внимание", msg);
+        });
+        
         updateView();
     };
 

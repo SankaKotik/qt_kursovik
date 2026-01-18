@@ -3,6 +3,19 @@
 #include "libvector.h"
 #include "sketch_widget.h"
 
+// Этот класс будет отвечать за связь с UI
+class ModelNotifier : public QObject {
+    Q_OBJECT
+
+public:
+    explicit ModelNotifier(QObject *parent = nullptr);
+
+signals:
+    void statusChanged(const QString &message);
+    void errorOccurred(const QString &message);
+    void warningIssued(const QString &message);
+};
+
 struct Model
 {
     virtual ~Model() = default;
@@ -14,7 +27,8 @@ struct Model
     char selectedParameters = 0;
     char selectedExecution = 1;
 
-    std::function<void(std::string)> onStatus = nullptr;
+    // Указатель на объект-уведомитель
+    ModelNotifier* notifier = nullptr;
 
     virtual void initModel3D() = 0;
     virtual void drawSketch(SketchWidget *sketch) = 0;
@@ -54,7 +68,7 @@ struct HalfCoupling : Model {
             {31.5f, 18.0f, 0.0f, 20.8f, 0.0f, 5.0f, 30.0f, 71.0f, 40.0f, 28.0f, 58.0f, 46.0f, 28.0f, 15.0f, 6.0f, 16.0f, 0.2f, 0.47f, 0.32f},
             {31.5f, 0.0f, 19.0f, 21.8f, 0.0f, 6.0f, 30.0f, 71.0f, 40.0f, 28.0f, 58.0f, 46.0f, 28.0f, 15.0f, 6.0f, 16.0f, 0.2f, 0.45f, 0.33f},
             {31.5f, 22.0f, 0.0f, 24.8f, 0.0f, 6.0f, 34.0f, 71.0f, 50.0f, 36.0f, 68.0f, 54.0f, 28.0f, 15.0f, 6.0f, 16.0f, 0.2f, 0.55f, 0.41f},
-            {31.5f, 22.0f, 0.0f, 24.8f, 0.0f, 6.0f, 36.0f, 71.0f, 50.0f, 36.0f, 75.0f, 61.0f, 28.0f, 15.0f, 6.0f, 16.0f, 0.2f, 0.53f, 0.39f},
+            {31.5f, 22.0f, 0.0f, 24.8f, 0.0f, 6.0f, 34.0f, 71.0f, 50.0f, 36.0f, 68.0f, 54.0f, 28.0f, 15.0f, 6.0f, 16.0f, 0.2f, 0.53f, 0.39f},
 
             {63.0f, 20.0f, 0.0f, 22.8f, 0.0f, 6.0f, 36.0f, 85.0f, 50.0f, 36.0f, 75.0f, 61.0f, 40.0f, 22.0f, 7.0f, 21.0f, 0.2f, 0.86f, 0.79f},
             {63.0f, 22.0f, 0.0f, 24.8f, 0.0f, 6.0f, 36.0f, 85.0f, 50.0f, 36.0f, 75.0f, 61.0f, 40.0f, 22.0f, 7.0f, 21.0f, 0.2f, 0.83f, 0.78f},
