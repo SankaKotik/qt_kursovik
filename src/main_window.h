@@ -10,6 +10,7 @@
 #include "sketch_widget.h"
 #include "tools/clickabletreewidget.h"
 #include "overlay_widget.h"
+#include "stl_serializer.h"
 #include "parameter_selector.h"
 #include "model.h"
 
@@ -57,6 +58,7 @@ private:
     GLWidget3D *glWidget;
     SketchWidget *sketchWidget;
     OverlayWidget *overlay;
+    QAction *saveStlAct;
     bool paramSelectorPreview = true;
     Model *currentModel = nullptr;
 };

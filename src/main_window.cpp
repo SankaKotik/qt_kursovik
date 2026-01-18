@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QtConcurrent>
 #include <QFuture>
+#include <QFileDialog>
 #include <vector>
 
 #include "Standard_ErrorHandler.hxx"
@@ -32,6 +33,28 @@ void MainWindow::createToolBars()
     auto menu_settings = menuBar->addMenu(tr("Настроить"));
     auto menu_help = menuBar->addMenu(tr("Справка"));
 
+    saveStlAct = menu_file->addAction(
+        QIcon::fromTheme("document-save"), 
+        "Сохранить",
+        [this](){
+            QString fileName = QFileDialog::getSaveFileName(
+                this,
+                "Открыть файл",
+                "",
+                "stereolithography (*.stl)"
+            );
+            if (fileName.contains('.') == false) {
+                fileName += ".stl";
+            }
+            if (!fileName.isEmpty()) {
+                StlSerializer ser(&currentModel->vertex, &glWidget->normals);
+                ser.write(fileName.toStdString());
+            }
+        },
+        Qt::CTRL + Qt::Key_S
+    );
+    saveStlAct->setVisible(false);
+    menu_file->addSeparator();
     menu_file->addAction(
         QIcon::fromTheme("document-close"), 
         "Закрыть",
@@ -74,6 +97,7 @@ void MainWindow::setupUi()
 
     tree = new ClickableTreeWidget(this);
     auto root = tree->addItem("Сборка");
+    root->setOnClickHandler([this](){ selectModel<Assembly>(); });
     root->setExpanded(true);
 
     auto detail = root->addItem("Полумуфта");
@@ -147,6 +171,7 @@ void MainWindow::updateView() {
         if (overlay->modeSwitch->currentMode() == ViewModeSwitch::Mode2D) {
             sketchWidget->clear();
             currentModel->drawSketch(sketchWidget);
+            setEnabled(true);
         } else {
             // Получаем фьючер
             auto future = QtConcurrent::run([this]() {
@@ -167,5 +192,6 @@ void MainWindow::updateView() {
                 setEnabled(true);
             });
         }
+        saveStlAct->setVisible(overlay->modeSwitch->currentMode() == ViewModeSwitch::Mode3D);
     }
 }

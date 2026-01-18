@@ -157,6 +157,22 @@ struct Sprocket : Model {
     void drawSketch(SketchWidget *sketch) override;
 };
 
+// Сборка
+struct Assembly : Model {
+    Assembly() {
+        const QStringList params_table_headings = {
+
+        };
+
+        params_table = {
+
+        };
+    }
+    
+    void initModel3D() override;
+    void drawSketch(SketchWidget *sketch) override;
+};
+
 struct Detail1 : Model {
     void initModel3D() override;
     void drawSketch(SketchWidget *sketch) override;

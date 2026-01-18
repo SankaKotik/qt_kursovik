@@ -731,3 +731,23 @@ void Sprocket::drawSketch(SketchWidget *sketch) {
         }
     }
 }
+
+void Assembly::initModel3D() {
+    // Строим модели полумуфты и звездочки
+    auto coupling = new HalfCoupling;
+    coupling->initModel3D();
+    auto sprocket = new Sprocket;
+    sprocket->initModel3D();
+
+    TopoDS_Compound assembly_res;
+    BRep_Builder builder;
+    builder.MakeCompound(assembly_res);
+    builder.Add(assembly_res, coupling->shape);
+    builder.Add(assembly_res, sprocket->shape);
+
+    shape = assembly_res;
+}
+
+void Assembly::drawSketch(SketchWidget *sketch) {
+    
+}
