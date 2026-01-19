@@ -733,17 +733,122 @@ void Sprocket::drawSketch(SketchWidget *sketch) {
 }
 
 void Assembly::initModel3D() {
+    // Основные параметры
+    double mkr = params_table[selectedParameters][0];
+    double d = params_table[selectedParameters][1];
+    double d_row2 = params_table[selectedParameters][2];
+
     // Строим модели полумуфты и звездочки
     auto coupling = new HalfCoupling;
+
+    // Поиск параметров в модели
+    {
+        auto it = std::find_if(coupling->params_table.begin(), coupling->params_table.end(), [&](const std::vector<float>& row) {
+            // Проверяем, что в строке достаточно элементов и они равны искомым
+            return row.size() > 2 && row[0] == mkr && (row[1] == d || row[2] == d_row2);
+        });
+        if (it != coupling->params_table.end()) {
+            coupling->selectedParameters = std::distance(coupling->params_table.begin(), it);
+        } else {
+            if (notifier) { notifier->errorOccurred("Выбранные параметры не найдены в таблице размеров полумуфты!"); }
+            return;
+        }
+    }
+
+    // Пробрасываем номер исполнения
+    coupling->selectedExecution = selectedExecution;
     coupling->initModel3D();
+    
     auto sprocket = new Sprocket;
+    // Поиск параметров в модели
+    {
+        auto it = std::find_if(sprocket->params_table.begin(), sprocket->params_table.end(), [&](const std::vector<float>& row) {
+            // Проверяем, что в строке достаточно элементов и они равны искомым
+            return row.size() > 1 && row[0] == mkr;
+        });
+        if (it != sprocket->params_table.end()) {
+            sprocket->selectedParameters = std::distance(sprocket->params_table.begin(), it);
+        } else {
+            if (notifier) { notifier->errorOccurred("Выбранные параметры не найдены в таблице размеров звездочки!"); }
+            return;
+        }
+    }
+
     sprocket->initModel3D();
+
+    // Трансформация для звездочки
+    gp_Trsf sprocketTrsf;
+    {
+        double sprocket_H = mkr <= 6.3f ? 10.5f : sprocket->params_table[sprocket->selectedParameters][4];
+
+        // Создаем трансформацию перемещения
+        gp_Trsf translation;
+        translation.SetTranslation(gp_Vec(-(sprocket_H + 1.), 0.0, 0.0));
+
+        // Создаем трансформацию поворота (вокруг Y на 90 градусов)
+        gp_Trsf rotation;
+        gp_Ax1 axis(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0));
+        rotation.SetRotation(axis, M_PI_2);
+
+        // Комбинируем: сначала поворот, потом перемещение
+        // (Порядок справа налево: сначала rotation, затем translation)
+        sprocketTrsf = translation * rotation;
+    }
+
+    // Трансформация для второй полумуфты
+    gp_Trsf secondCouplingTrsf;
+    {
+        double coupling_l3 = mkr <= 6.3f ? 10.5 : coupling->params_table[selectedParameters][13];
+
+        gp_Trsf translation;
+        translation.SetTranslation(gp_Vec(-(coupling_l3 + 2), 0.0, 0.0));
+
+        gp_Trsf rotation;
+        gp_Ax1 axis(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0));
+        rotation.SetRotation(axis, M_PI);
+
+        secondCouplingTrsf = translation * rotation;
+    }
+
+    if (sprocket->shape.IsNull() || coupling->shape.IsNull()) {
+        if (notifier) { 
+            QStringList missing_parts;
+
+            // Собираем список отсутствующих деталей
+            if (coupling->shape.IsNull()) {
+                missing_parts << "Полумуфта";
+            }
+            if (sprocket->shape.IsNull()) {
+                missing_parts << "Звездочка";
+            }
+
+            if (!missing_parts.isEmpty()) {
+                QString error_message;
+                
+                if (missing_parts.size() == 1) {
+                    // Если отсутствует только один объект
+                    error_message = missing_parts.first() + " не построена!";
+                } else {
+                    // Если отсутствуют оба (и более)
+                    // Соединяем элементы: первый с большой буквы, остальные с маленькой через " и "
+                    error_message = missing_parts.at(0) + " и " + missing_parts.at(1).toLower() + " не построены!";
+                }
+
+                notifier->errorOccurred(error_message);
+            }
+        }
+        return;
+    }
+    // Применяем трансформацию к детали
+    BRepBuilderAPI_Transform sprocket_transformer(sprocket->shape, sprocketTrsf);
+    BRepBuilderAPI_Transform coupling_transformer(coupling->shape, secondCouplingTrsf);
 
     TopoDS_Compound assembly_res;
     BRep_Builder builder;
     builder.MakeCompound(assembly_res);
     builder.Add(assembly_res, coupling->shape);
-    builder.Add(assembly_res, sprocket->shape);
+    builder.Add(assembly_res, coupling_transformer);
+    builder.Add(assembly_res, sprocket_transformer);
 
     shape = assembly_res;
 }
