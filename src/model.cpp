@@ -489,10 +489,10 @@ void HalfCoupling::initModel3D() {
         }
 
         mkChamfer.Build();
-        chamferSolid = mkChamfer.Shape();
+        toothChamfer = mkChamfer.Shape();
     }
     
-    shape = chamferSolid;
+    shape = toothChamfer;
 }
 
 void HalfCoupling::drawSketch(SketchWidget *sketch) {
