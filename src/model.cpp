@@ -28,12 +28,15 @@
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepAlgoAPI_Common.hxx>
-#include "TopTools_ListOfShape.hxx"
+#include <TopTools.hxx>
+#include <NCollection_List.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepPrimAPI_MakeRevol.hxx>
 #include <GC_MakeArcOfCircle.hxx>
+
+typedef NCollection_List<TopoDS_Shape> TopTools_ListOfShape;
 
 ModelNotifier::ModelNotifier(QObject *parent)
     : QObject()
